@@ -1,3 +1,5 @@
+const https = require('https');
+
 const FIREBASE_API_KEY = 'AIzaSyCHBPkgIMiGKmNt8B2JIoxsQ1Jc5mAnTBg';
 const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/bupa-delivery/databases/(default)/documents';
 
@@ -31,6 +33,38 @@ function fromFS(v) {
   return null;
 }
 
+function fetchJSON(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, {
+      method:  options.method || 'GET',
+      headers: options.headers || {},
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch(e) { reject(new Error('Invalid JSON response')); }
+      });
+    });
+    req.on('error', reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    if (req.body && typeof req.body === 'object') return resolve(req.body);
+    let data = '';
+    req.on('data', chunk => data += chunk);
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}); }
+      catch(e) { reject(new Error('Invalid JSON body')); }
+    });
+    req.on('error', reject);
+  });
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -43,14 +77,19 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const task = req.body;
+  let task;
+  try {
+    task = await parseBody(req);
+  } catch(e) {
+    return res.status(400).json({ error: 'Could not parse request body: ' + e.message });
+  }
+
   if (!task || !task.id || !task.title) {
     return res.status(400).json({ error: 'Task must have id and title' });
   }
 
   try {
-    const getRes = await fetch(`${FIRESTORE_BASE}/kanban/board?key=${FIREBASE_API_KEY}`);
-    const raw    = await getRes.json();
+    const raw = await fetchJSON(`${FIRESTORE_BASE}/kanban/board?key=${FIREBASE_API_KEY}`);
     if (raw.error) return res.status(500).json({ error: raw.error.message });
 
     const tasks = (raw.fields?.tasks?.arrayValue?.values || []).map(fromFS);
@@ -62,15 +101,15 @@ module.exports = async function handler(req, res) {
 
     tasks.push(task);
 
-    const patchRes = await fetch(
+    const body = JSON.stringify({ fields: { tasks: toFS(tasks), done: toFS(done) } });
+    const patchData = await fetchJSON(
       `${FIRESTORE_BASE}/kanban/board?key=${FIREBASE_API_KEY}`,
       {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ fields: { tasks: toFS(tasks), done: toFS(done) } }),
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        body,
       }
     );
-    const patchData = await patchRes.json();
     if (patchData.error) return res.status(500).json({ error: patchData.error.message });
 
     return res.status(200).json({ success: true, task, total_tasks: tasks.length });
