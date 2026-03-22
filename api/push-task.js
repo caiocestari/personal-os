@@ -1,7 +1,6 @@
 const FIREBASE_API_KEY = 'AIzaSyCHBPkgIMiGKmNt8B2JIoxsQ1Jc5mAnTBg';
 const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/bupa-delivery/databases/(default)/documents';
 
-// Convert plain JS value → Firestore REST typed value
 function toFS(v) {
   if (v === null || v === undefined) return { nullValue: null };
   if (typeof v === 'boolean')        return { booleanValue: v };
@@ -16,7 +15,6 @@ function toFS(v) {
   return { stringValue: String(v) };
 }
 
-// Convert Firestore REST typed value → plain JS value
 function fromFS(v) {
   if (!v)                  return null;
   if ('nullValue'    in v) return null;
@@ -33,15 +31,13 @@ function fromFS(v) {
   return null;
 }
 
-export default async function handler(req, res) {
-  // CORS — allow Claude to call this from anywhere
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-push-token');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
-  // Auth — check secret token
   const token = req.headers['x-push-token'];
   if (!token || token !== process.env.PUSH_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -53,24 +49,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Fetch current board from Firestore
-    const getRes  = await fetch(`${FIRESTORE_BASE}/kanban/board?key=${FIREBASE_API_KEY}`);
-    const raw     = await getRes.json();
+    const getRes = await fetch(`${FIRESTORE_BASE}/kanban/board?key=${FIREBASE_API_KEY}`);
+    const raw    = await getRes.json();
     if (raw.error) return res.status(500).json({ error: raw.error.message });
 
-    // 2. Parse existing tasks + done list
     const tasks = (raw.fields?.tasks?.arrayValue?.values || []).map(fromFS);
     const done  = (raw.fields?.done?.arrayValue?.values  || []).map(fromFS);
 
-    // 3. Reject duplicate IDs
     if (tasks.find(t => t.id === task.id)) {
       return res.status(409).json({ error: `Task with id "${task.id}" already exists` });
     }
 
-    // 4. Append new task
     tasks.push(task);
 
-    // 5. Write back to Firestore
     const patchRes = await fetch(
       `${FIRESTORE_BASE}/kanban/board?key=${FIREBASE_API_KEY}`,
       {
@@ -84,7 +75,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ success: true, task, total_tasks: tasks.length });
 
-  } catch (e) {
+  } catch(e) {
     return res.status(500).json({ error: e.message });
   }
-}
+};
