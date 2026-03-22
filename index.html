@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Personal OS — Kanban</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans,'Outfit',sans-serif);background:#0b0b0f;color:#d8d8ec;height:100vh;overflow:hidden}
+#loading{display:flex;align-items:center;justify-content:center;height:100%;font-size:11px;color:#202040;font-family:monospace;letter-spacing:0.1em}
+.board{display:flex;flex-direction:column;height:100vh}
+.toolbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #1a1a28;flex-shrink:0;flex-wrap:wrap}
+.board-title{font-size:11px;font-weight:600;letter-spacing:0.15em;color:#6060a0;font-family:monospace;flex-shrink:0}
+.save-dot{width:5px;height:5px;border-radius:50%;background:#1e3a1e;transition:background .3s;flex-shrink:0}
+.save-dot.saving{background:#2a6a2a}
+.save-dot.error{background:#6a2a2a}
+.stats{font-size:10px;color:#2a2a4a;font-family:monospace;flex-shrink:0}
+.spacer{flex:1}
+.filters{display:flex;gap:4px;flex-wrap:wrap}
+.chip{font-size:9px;padding:2px 8px;border-radius:20px;border:1px solid #1a1a2e;cursor:pointer;background:transparent;color:#40406a;font-family:monospace;transition:all .12s;letter-spacing:0.05em;white-space:nowrap}
+.chip:hover,.chip.on{background:#16162a;border-color:#2a2a4a;color:#9090c0}
+.tbtn{font-size:10px;padding:3px 10px;border-radius:5px;border:1px solid #1a1a2e;background:transparent;color:#40406a;cursor:pointer;font-family:monospace;transition:all .12s;letter-spacing:0.05em;white-space:nowrap}
+.tbtn:hover{background:#16162a;color:#9090c0}
+.main{flex:1;display:flex;overflow:hidden}
+.now-panel{width:238px;min-width:238px;display:flex;flex-direction:column;background:#0d0d18;border-right:1px solid #131320;transition:background .15s,border-color .15s;flex-shrink:0}
+.now-panel.dz-over{background:#0a1228;border-right-color:#1e3060}
+.now-header{padding:13px 13px 9px;border-bottom:1px solid #131320;flex-shrink:0}
+.now-label{font-size:9px;font-weight:600;letter-spacing:0.2em;color:#3b5bdb;font-family:monospace;display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.now-dot{width:5px;height:5px;border-radius:50%;background:#3b5bdb;flex-shrink:0;animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.now-sub{font-size:9px;color:#20204a;font-family:monospace}
+.now-cards{flex:1;overflow-y:auto;padding:7px;display:flex;flex-direction:column;gap:5px}
+.now-cards::-webkit-scrollbar{width:2px}
+.now-cards::-webkit-scrollbar-thumb{background:#181830;border-radius:1px}
+.now-empty{padding:14px 10px;border:1px dashed #161628;border-radius:6px;font-size:9px;color:#1e1e3a;line-height:1.9;text-align:center;font-family:monospace}
+.swim-area{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column}
+.swim-area::-webkit-scrollbar{width:3px;height:3px}
+.swim-area::-webkit-scrollbar-thumb{background:#181822;border-radius:2px}
+.col-heads{display:grid;grid-template-columns:148px 1fr 1fr 1fr;position:sticky;top:0;z-index:10;background:#0b0b0f;border-bottom:1px solid #111118;flex-shrink:0}
+.col-head-init{padding:9px 10px}
+.col-head-lbl{padding:9px 8px;font-size:9px;font-weight:600;letter-spacing:0.18em;color:#252540;font-family:monospace;border-left:1px solid #0f0f14;text-align:center}
+.swim-row{display:grid;grid-template-columns:148px 1fr 1fr 1fr;border-bottom:1px solid #0f0f14;min-height:90px}
+.init-cell{padding:9px 8px;display:flex;flex-direction:column;justify-content:center;gap:3px;border-right:1px solid #0f0f14}
+.init-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.init-name{font-size:10px;font-weight:600;font-family:monospace;letter-spacing:0.04em}
+.col-zone{padding:6px;display:flex;flex-direction:column;gap:4px;border-left:1px solid #0f0f14;min-height:80px;transition:background .12s}
+.col-zone.dz-over{background:#0d1525;outline:1px dashed #1e3060;outline-offset:-3px}
+.card{border-radius:6px;padding:6px 8px;cursor:grab;user-select:none;background:#161620;border-top:1px solid #1e1e2e;border-right:1px solid #1e1e2e;border-bottom:1px solid #1e1e2e;border-left:2.5px solid transparent;transition:transform .1s,background .1s;position:relative}
+.card:hover{background:#1b1b2a;border-top-color:#272738;border-right-color:#272738;border-bottom-color:#272738;transform:translateY(-1px)}
+.card.dragging{opacity:.2;transform:none!important}
+.card.done{opacity:.3}
+.card.done .card-title{text-decoration:line-through;color:#404060}
+.card.urgent{background:#1a0e0e;border-top-color:#2a1010;border-right-color:#2a1010;border-bottom-color:#2a1010}
+.card-title{font-size:11px;font-weight:500;color:#b8b8d8;line-height:1.35;margin-bottom:4px;padding-right:16px}
+.card-meta{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.tag-pill{font-family:monospace;font-size:8px;padding:1px 5px;border-radius:999px;font-weight:500}
+.dl{font-family:monospace;font-size:8px;padding:1px 4px;border-radius:2px;font-weight:500;letter-spacing:0.03em;flex-shrink:0}
+.dl-asap{background:#2a0d0d;color:#cc3a3a}
+.dl-hot{background:#2a1000;color:#d4621a}
+.dl-near{background:#1a1200;color:#a0880a}
+.dl-ok{background:#121220;color:#2e2e50}
+.badge-soon{font-family:monospace;font-size:8px;padding:1px 4px;border-radius:2px;background:#3a0000;color:#e05050;font-weight:700;letter-spacing:.04em}
+.imp{display:flex;gap:1.5px;margin-left:auto;flex-shrink:0}
+.imp-d{width:3.5px;height:3.5px;border-radius:50%;background:#1a1a30}
+.imp-d.on{background:#383858}
+.card-source{font-size:9px;color:#1e1e38;font-family:monospace;margin-top:3px}
+.done-btn{position:absolute;top:5px;right:6px;background:none;border:none;cursor:pointer;font-size:9px;color:#242440;opacity:0;transition:opacity .1s;line-height:1;padding:1px 2px}
+.card:hover .done-btn{opacity:1}
+.done-btn:hover{color:#5050a0}
+.card.done .done-btn{opacity:.7;color:#5050a0}
+.unpin-btn{background:none;border:none;cursor:pointer;font-size:8px;color:#1e2e5a;font-family:monospace;text-decoration:underline;padding:0}
+.unpin-btn:hover{color:#3b5bdb}
+.done-toggle{padding:4px 8px 3px;font-size:8px;color:#1e1e38;font-family:monospace;letter-spacing:0.1em;cursor:pointer;border-top:1px solid #0f0f14;transition:color .12s;flex-shrink:0;text-align:right}
+.done-toggle:hover{color:#30305a}
+.add-btn{background:none;border:1px dashed #161628;border-radius:5px;color:#1e1e3a;font-size:8px;cursor:pointer;padding:2px 7px;font-family:monospace;letter-spacing:.05em;width:100%;text-align:left;transition:border-color .12s,color .12s;margin-top:1px}
+.add-btn:hover{border-color:#252545;color:#30305a}
+.add-form{background:#0d0d1a;border:1px dashed #1e1e38;border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:4px}
+.add-inp{background:#111120;border:1px solid #1e1e38;border-radius:4px;color:#d8d8ec;font-size:10px;padding:3px 6px;outline:none;font-family:var(--font-sans,'Outfit',sans-serif);width:100%}
+.add-inp:focus{border-color:#3b5bdb}
+.add-actions{display:flex;gap:5px}
+.add-save{background:#16244a;border:1px solid #2a3a80;border-radius:4px;color:#7090dd;font-size:9px;font-weight:500;padding:2px 8px;cursor:pointer;font-family:monospace;letter-spacing:.05em}
+.add-save:hover{background:#1e2e60}
+.add-cancel{background:none;border:none;color:#252545;font-size:9px;cursor:pointer;font-family:monospace}
+.add-cancel:hover{color:#404060}
+.export-wrap{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:flex-end;z-index:50}
+.export-wrap.hidden{display:none}
+.export-panel{width:100%;background:#0d0d18;border-top:1px solid #1e1e38;padding:16px;max-height:60vh;display:flex;flex-direction:column;gap:10px}
+.export-head{display:flex;align-items:center;gap:10px}
+.export-title{font-size:11px;font-weight:600;letter-spacing:0.12em;color:#5050a0;font-family:monospace;flex:1}
+.export-pre{flex:1;overflow-y:auto;background:#08080f;border:1px solid #161628;border-radius:5px;padding:12px;font-family:monospace;font-size:9px;color:#505080;white-space:pre;max-height:40vh}
+</style>
+</head>
+<body>
+
+<div id="loading">LOADING BOARD...</div>
+
+<div class="board" id="board" style="display:none">
+  <div class="toolbar">
+    <span class="board-title">PERSONAL OS</span>
+    <span class="save-dot" id="save-dot" title="Sync status"></span>
+    <span class="stats" id="stats"></span>
+    <div class="spacer"></div>
+    <div class="filters" id="filters"></div>
+    <button class="tbtn" id="export-btn">↓ EXPORT MD</button>
+  </div>
+  <div class="main">
+    <div class="now-panel" id="now-panel">
+      <div class="now-header">
+        <div class="now-label"><span class="now-dot"></span>NOW</div>
+        <div class="now-sub" id="now-sub">pinned · auto ≤3 days</div>
+      </div>
+      <div class="now-cards" id="now-cards"></div>
+    </div>
+    <div class="swim-area">
+      <div class="col-heads">
+        <div class="col-head-init"></div>
+        <div class="col-head-lbl">NEXT</div>
+        <div class="col-head-lbl">PLANNED</div>
+        <div class="col-head-lbl">IDEAS</div>
+      </div>
+      <div id="swim-rows"></div>
+    </div>
+  </div>
+</div>
+
+<div class="export-wrap hidden" id="export-wrap">
+  <div class="export-panel">
+    <div class="export-head">
+      <span class="export-title">TASK LIST EXPORT</span>
+      <button class="tbtn" id="copy-btn">COPY</button>
+      <button class="tbtn" id="close-export">✕ CLOSE</button>
+    </div>
+    <pre class="export-pre" id="export-pre"></pre>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp }
+  from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot }
+  from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+// ── FIREBASE ──────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey:            "AIzaSyCHBPkgIMiGKmNt8B2JIoxsQ1Jc5mAnTBg",
+  authDomain:        "bupa-delivery.firebaseapp.com",
+  projectId:         "bupa-delivery",
+  storageBucket:     "bupa-delivery.firebasestorage.app",
+  messagingSenderId: "537687117293",
+  appId:             "1:537687117293:web:7eb4dacb3919c66aaf2be4"
+};
+const app      = initializeApp(firebaseConfig);
+const db       = getFirestore(app);
+const boardRef = doc(db, 'kanban', 'board');
+
+// ── INITIATIVES ───────────────────────────────────────────
+const INITS = [
+  { id:'ro', tag:'#ReleaseOps',  color:'#3b82f6' },
+  { id:'th', tag:'#Theseus',     color:'#a855f7' },
+  { id:'au', tag:'#Automation',  color:'#f97316' },
+  { id:'do', tag:'#DORA',        color:'#22c55e' },
+  { id:'tc', tag:'#TeamCulture', color:'#ef4444' },
+  { id:'qp', tag:'#QPlanning',   color:'#eab308' },
+  { id:'bc', tag:'#BCC',         color:'#60a5fa' },
+  { id:'md', tag:'#MyDev',       color:'#2dd4bf' },
+  { id:'un', tag:'Untagged',     color:'#6060a0' },
+];
+const INIT_MAP = {};
+INITS.forEach(i => { INIT_MAP[i.id] = i; });
+
+// ── DEFAULT TASKS ─────────────────────────────────────────
+const DEFAULT_TASKS = [
+  {id:'r1', title:"QA strain & experimentation — options for sustainability",                                tag:'#ReleaseOps',  iid:'ro',impact:5,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'r2', title:"Review release cadence post Super Release — communicate decisions + release optionality",tag:'#ReleaseOps',  iid:'ro',impact:5,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'r3', title:"Squad hops off release — what happens to regression on their domain?",                   tag:'#ReleaseOps',  iid:'ro',impact:5,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'r4', title:"Fill in and share DoD with App teams",                                                   tag:'#ReleaseOps',  iid:'ro',impact:4,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'r5', title:"Finalise NFT guardrails",                                                                tag:'#ReleaseOps',  iid:'ro',impact:4,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'r6', title:"How do we consider production support work items in the release scope?",                 tag:'#ReleaseOps',  iid:'ro',impact:4,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'r7', title:"Flaky tests — decision chart: rewrite/fix vs leave as is",                              tag:'#ReleaseOps',  iid:'ro',impact:4,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'r8', title:"Consolidate Environment hiccups",                                                        tag:'#ReleaseOps',  iid:'ro',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'h1', title:"Theseus Q2/3/4 roadmap — discover and deliver types of work + capabilities required",   tag:'#Theseus',     iid:'th',impact:5,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'h2', title:"Key priorities: get REVS out the door + recover reliability in test automation",         tag:'#Theseus',     iid:'th',impact:5,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'h3', title:"Chat with Hamish — Girish's role in App & case for a Quality Coach in Web+APIs",        tag:'#Theseus',     iid:'th',impact:4,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'h4', title:"Monitoring",                                                                              tag:'#Theseus',     iid:'th',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'h5', title:"Front line staff on UI changes — QP tag + release process diagram",                     tag:'#Theseus',     iid:'th',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'a1', title:"Automate Sprint Report — rubric + Claude + Hamish's reviews",                           tag:'#Automation',  iid:'au',impact:4,deadline_raw:'End Apr',   due_date:'2026-04-30',col:'planned',pin:false},
+  {id:'d1', title:"DORA: per-asset assessment + plan from baseline to target",                              tag:'#DORA',        iid:'do',impact:4,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'d2', title:"Analyse 'In Review' bottleneck — Feb faster metric report",                             tag:'#DORA',        iid:'do',impact:3,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'d3', title:"Share with Patrick what we've been doing to unlock and accelerate speed",                tag:'#DORA',        iid:'do',impact:4,deadline_raw:'1st wk Apr',due_date:'2026-04-04',col:'planned',pin:false},
+  {id:'d4', title:"DORA build — scope, determine assets, create baseline",                                  tag:'#DORA',        iid:'do',impact:4,deadline_raw:'End Apr',   due_date:'2026-04-30',col:'planned',pin:false},
+  {id:'d5', title:"Infosys — 'faster' report by Squad",                                                    tag:'#DORA',        iid:'do',impact:3,deadline_raw:'Q2',        due_date:null,        col:'ideas',  pin:false},
+  {id:'c1', title:"Integrative Decision Making template — Shweta/Confluence + share with App space",       tag:'#TeamCulture', iid:'tc',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'c2', title:"Teams: etiquette, tools, and individual preferences for comms",                         tag:'#TeamCulture', iid:'tc',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'c3', title:"Team Half-Day — Melbourne",                                                              tag:'#TeamCulture', iid:'tc',impact:3,deadline_raw:'Later',     due_date:null,        col:'ideas',  pin:false},
+  {id:'c4', title:"Patches, badges",                                                                        tag:'#TeamCulture', iid:'tc',impact:2,deadline_raw:'Q2',        due_date:null,        col:'ideas',  pin:false},
+  {id:'c5', title:"2026 App Appreciation + emojis: Brave, Nimble, Together",                               tag:'#TeamCulture', iid:'tc',impact:2,deadline_raw:'Q2',        due_date:null,        col:'ideas',  pin:false},
+  {id:'c6', title:"Secret sauce for App — how wide the roles naturally are: core and adjacent",            tag:'#TeamCulture', iid:'tc',impact:3,deadline_raw:'Q2',        due_date:null,        col:'ideas',  pin:false},
+  {id:'q1', title:"Sprint Report this week OR reset expectations via QP outputs — Sean + Nippa",           tag:'#QPlanning',   iid:'qp',impact:4,deadline_raw:'24 Mar',    due_date:'2026-03-24',col:'next',   pin:false},
+  {id:'q2', title:"Share Q1 completed work items with teams for celebration — Monday AM",                  tag:'#QPlanning',   iid:'qp',impact:4,deadline_raw:'24 Mar AM', due_date:'2026-03-24',col:'next',   pin:false},
+  {id:'q3', title:"Create Q1/Q2/Q3-Q4 (Now/Next/Later) roadmap view in the QP board",                    tag:'#QPlanning',   iid:'qp',impact:4,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'q4', title:"Change logos to coloured ones in the QP board",                                         tag:'#QPlanning',   iid:'qp',impact:2,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'q5', title:"Watch Sean's introduction in SoS — understand how he positioned himself",               tag:'#QPlanning',   iid:'qp',impact:2,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'q6', title:"1st April — Enterprise readout of Quarterly Planning for Q2",                           tag:'#QPlanning',   iid:'qp',impact:4,deadline_raw:'1 Apr',     due_date:'2026-04-01',col:'planned',pin:false},
+  {id:'q7', title:"Christian's risks — change query, high level only",                                     tag:'#QPlanning',   iid:'qp',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'q8', title:"Chat with Andy on sizing — how to make it better for desired outcomes?",                tag:'#QPlanning',   iid:'qp',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'b1', title:"Macbooks for BCC",                                                                       tag:'#BCC',         iid:'bc',impact:2,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'b2', title:"Connect Jerome and Saumya — app testing strategy alignment + how we'll get there",     tag:'#BCC',         iid:'bc',impact:4,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'m1', title:"Communicate to team: moving to 9-day fortnight from April",                             tag:'#MyDev',       iid:'md',impact:4,deadline_raw:'21 Mar',    due_date:'2026-03-21',col:'next',   pin:false},
+  {id:'m2', title:"Learn REVS and contract testing using Claude — to articulate",                          tag:'#MyDev',       iid:'md',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'u1', title:"Aroonima's case — moving from Infy to Bupa, decision on visa nomination swap",         tag:'Untagged',     iid:'un',impact:5,deadline_raw:'ASAP',      due_date:null,        col:'next',   pin:true },
+  {id:'u2', title:"Aroo: permanent role (BCC risk)",                                                        tag:'Untagged',     iid:'un',impact:4,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'u3', title:"Product Signal Pills",                                                                    tag:'Untagged',     iid:'un',impact:3,deadline_raw:'End Mar',   due_date:'2026-03-31',col:'next',   pin:false},
+  {id:'u4', title:"SIMON — support to leverage CAB 'elimination'",                                         tag:'Untagged',     iid:'un',impact:4,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'u5', title:"R&R — Hamish request to map roles and responsibilities",                                 tag:'Untagged',     iid:'un',impact:3,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'u6', title:"App Store Reviews — myBupa and Aroo",                                                   tag:'Untagged',     iid:'un',impact:2,deadline_raw:'Mid Apr',   due_date:'2026-04-15',col:'planned',pin:false},
+  {id:'u7', title:"Flight Deck metrics — NPS",                                                              tag:'Untagged',     iid:'un',impact:3,deadline_raw:'Q2',        due_date:null,        col:'ideas',  pin:false},
+];
+
+// ── STATE ─────────────────────────────────────────────────
+let tasks        = [];
+let done         = new Set();
+let activeFilter = null;
+let showDoneIn   = {};
+let dragId       = null;
+let addForm      = null;
+let saveTimer    = null;
+let uidCounter   = 600;
+let isSyncing    = false;
+const TODAY      = new Date(); TODAY.setHours(0,0,0,0);
+
+// ── FIRESTORE LOAD + REALTIME ─────────────────────────────
+async function loadBoard() {
+  try {
+    const snap = await getDoc(boardRef);
+    if (snap.exists()) {
+      const d = snap.data();
+      tasks = d.tasks || deepCopy(DEFAULT_TASKS);
+      done  = new Set(d.done || []);
+    } else {
+      tasks = deepCopy(DEFAULT_TASKS);
+      done  = new Set();
+      await setDoc(boardRef, { tasks, done: [] });
+    }
+  } catch(e) {
+    console.error('Load error:', e);
+    tasks = deepCopy(DEFAULT_TASKS);
+    done  = new Set();
+  }
+
+  // Live listener — fires when another device or API push changes the doc
+  onSnapshot(boardRef, (snap) => {
+    if (isSyncing || !snap.exists()) return;
+    const d = snap.data();
+    tasks = d.tasks || tasks;
+    done  = new Set(d.done || []);
+    render();
+  }, (err) => console.error('Snapshot error:', err));
+}
+
+function schedSave() {
+  const dot = document.getElementById('save-dot');
+  dot.classList.add('saving');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    isSyncing = true;
+    try {
+      await setDoc(boardRef, { tasks, done: [...done] });
+      dot.classList.remove('saving');
+      dot.classList.remove('error');
+    } catch(e) {
+      console.error('Save error:', e);
+      dot.classList.remove('saving');
+      dot.classList.add('error');
+    }
+    setTimeout(() => { isSyncing = false; }, 500);
+  }, 700);
+}
+
+function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
+
+// ── HELPERS ───────────────────────────────────────────────
+function daysUntil(iso) {
+  if (!iso) return null;
+  const [y,m,d] = iso.split('-').map(Number);
+  return Math.round((new Date(y,m-1,d) - TODAY) / 86400000);
+}
+function inNow(t) {
+  if (done.has(t.id)) return false;
+  if (t.pin) return true;
+  const n = daysUntil(t.due_date);
+  return n !== null && n <= 3;
+}
+function isSoon(t) { const n = daysUntil(t.due_date); return n !== null && n <= 3; }
+function dueLbl(t) {
+  const n = daysUntil(t.due_date);
+  if (n === null) return t.deadline_raw || '';
+  if (n < 0)  return Math.abs(n) + 'd overdue';
+  if (n === 0) return 'today';
+  if (n <= 3)  return n + 'd left';
+  return t.deadline_raw || '';
+}
+function dlClass(raw) {
+  if (!raw) return 'dl-ok';
+  const r = raw.toLowerCase();
+  if (r === 'asap') return 'dl-asap';
+  if (r.includes('21 mar') || r.includes('24 mar')) return 'dl-hot';
+  if (r.includes('end mar') || r.includes('mar'))   return 'dl-near';
+  return 'dl-ok';
+}
+
+// ── RENDER ────────────────────────────────────────────────
+function render() {
+  const active = tasks.filter(t => !done.has(t.id)).length;
+  document.getElementById('stats').textContent =
+    `${active} active · ${done.size} done · ${tasks.length} total`;
+  renderFilters();
+  renderNow();
+  renderSwim();
+}
+
+function renderFilters() {
+  const el = document.getElementById('filters');
+  el.innerHTML = '';
+  [null, ...INITS].forEach(ini => {
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (activeFilter === (ini ? ini.id : null) ? ' on' : '');
+    btn.textContent = ini ? ini.tag : 'ALL';
+    if (ini) btn.style.color = activeFilter === ini.id ? ini.color : ini.color + '66';
+    btn.onclick = () => { activeFilter = (ini && activeFilter !== ini.id) ? ini.id : null; render(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderNow() {
+  const panel   = document.getElementById('now-panel');
+  const cardsEl = document.getElementById('now-cards');
+  cardsEl.innerHTML = '';
+  const nowTasks = tasks.filter(t => inNow(t) && (!activeFilter || t.iid === activeFilter));
+  document.getElementById('now-sub').textContent =
+    nowTasks.length + ' task' + (nowTasks.length !== 1 ? 's' : '') + ' · pinned + auto ≤3 days';
+  if (!nowTasks.length) {
+    cardsEl.innerHTML = '<div class="now-empty">Drag tasks here<br>or tasks due in<br>≤3 days auto-surface</div>';
+  } else {
+    nowTasks.forEach(t => cardsEl.appendChild(buildCard(t, 'now')));
+  }
+  panel.classList.remove('dz-over');
+  panel.ondragover  = e => { if (!dragId) return; e.preventDefault(); panel.classList.add('dz-over'); };
+  panel.ondragleave = e => { if (!panel.contains(e.relatedTarget)) panel.classList.remove('dz-over'); };
+  panel.ondrop = e => {
+    e.preventDefault(); panel.classList.remove('dz-over');
+    if (!dragId) return;
+    const t = tasks.find(x => x.id === dragId);
+    if (t) { t.pin = true; schedSave(); }
+    dragId = null; render();
+  };
+}
+
+function renderSwim() {
+  const rows = document.getElementById('swim-rows');
+  rows.innerHTML = '';
+  INITS.forEach(ini => {
+    if (activeFilter && activeFilter !== ini.id) return;
+    const row = document.createElement('div');
+    row.className = 'swim-row';
+    const ic = document.createElement('div');
+    ic.className = 'init-cell';
+    ic.innerHTML = `<span class="init-dot" style="background:${ini.color}"></span><span class="init-name" style="color:${ini.color}">${ini.tag}</span>`;
+    row.appendChild(ic);
+    ['next','planned','ideas'].forEach(col => {
+      const zk   = ini.id + '-' + col;
+      const zone = document.createElement('div');
+      zone.className = 'col-zone';
+      const ct = tasks.filter(t => t.iid===ini.id && t.col===col && !inNow(t) && (showDoneIn[zk]||!done.has(t.id)));
+      const dc = tasks.filter(t => t.iid===ini.id && t.col===col && !inNow(t) && done.has(t.id)).length;
+      ct.forEach(t => zone.appendChild(buildCard(t, 'lane')));
+      if (dc > 0) {
+        const tog = document.createElement('div');
+        tog.className   = 'done-toggle';
+        tog.textContent = showDoneIn[zk] ? `▲ hide ${dc} done` : `▾ ${dc} done`;
+        tog.onclick = () => { showDoneIn[zk] = !showDoneIn[zk]; render(); };
+        zone.appendChild(tog);
+      }
+      if (addForm && addForm.iid===ini.id && addForm.col===col) {
+        zone.appendChild(buildAddForm(ini, col));
+      } else {
+        const btn = document.createElement('button');
+        btn.className   = 'add-btn';
+        btn.textContent = '+ ADD TASK';
+        btn.onclick = () => { addForm = { iid:ini.id, col }; render(); };
+        zone.appendChild(btn);
+      }
+      zone.ondragover  = e => { if (!dragId) return; e.preventDefault(); zone.classList.add('dz-over'); };
+      zone.ondragleave = e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('dz-over'); };
+      zone.ondrop = e => {
+        e.preventDefault(); zone.classList.remove('dz-over');
+        if (!dragId) return;
+        const t = tasks.find(x => x.id === dragId);
+        if (t) { t.iid=ini.id; t.col=col; t.pin=false; schedSave(); }
+        dragId = null; render();
+      };
+      row.appendChild(zone);
+    });
+    rows.appendChild(row);
+  });
+}
+
+function buildCard(t, ctx) {
+  const ini    = INIT_MAP[t.iid] || INIT_MAP['un'];
+  const isDone = done.has(t.id);
+  const soon   = isSoon(t);
+  const card   = document.createElement('div');
+  card.className = 'card' + (isDone?' done':'') + (soon&&!isDone?' urgent':'');
+  card.draggable = true;
+  card.style.borderLeftColor = ini.color;
+  const db2 = document.createElement('button');
+  db2.className   = 'done-btn';
+  db2.title       = isDone ? 'Restore' : 'Mark done';
+  db2.textContent = isDone ? '↺' : '✓';
+  db2.onclick = e => { e.stopPropagation(); if(done.has(t.id)) done.delete(t.id); else done.add(t.id); schedSave(); render(); };
+  card.appendChild(db2);
+  const title = document.createElement('div');
+  title.className   = 'card-title';
+  title.textContent = t.title;
+  card.appendChild(title);
+  const meta = document.createElement('div');
+  meta.className = 'card-meta';
+  const tag = document.createElement('span');
+  tag.className        = 'tag-pill';
+  tag.style.background = ini.color + '22';
+  tag.style.color      = ini.color;
+  tag.textContent      = ini.tag;
+  meta.appendChild(tag);
+  const dl = document.createElement('span');
+  dl.className   = 'dl ' + (soon ? 'dl-hot' : dlClass(t.deadline_raw));
+  dl.textContent = dueLbl(t);
+  meta.appendChild(dl);
+  if (soon && !isDone) {
+    const b = document.createElement('span');
+    b.className = 'badge-soon'; b.textContent = 'DUE SOON';
+    meta.appendChild(b);
+  }
+  const imp = document.createElement('div');
+  imp.className = 'imp';
+  for (let i=1;i<=5;i++) {
+    const d2 = document.createElement('div');
+    d2.className = 'imp-d' + (i<=t.impact?' on':'');
+    imp.appendChild(d2);
+  }
+  meta.appendChild(imp);
+  card.appendChild(meta);
+  if (ctx === 'now') {
+    const src = document.createElement('div');
+    src.className   = 'card-source';
+    const cl        = {next:'Next',planned:'Planned',ideas:'Ideas'}[t.col];
+    src.textContent = ini.tag + ' · ' + cl;
+    if (t.pin) {
+      src.textContent += ' · ';
+      const up = document.createElement('button');
+      up.className = 'unpin-btn'; up.textContent = 'unpin';
+      up.onclick = e => { e.stopPropagation(); t.pin=false; schedSave(); render(); };
+      src.appendChild(up);
+    } else { src.textContent += ' · auto-surfaced'; }
+    card.appendChild(src);
+  }
+  card.addEventListener('dragstart', e => {
+    dragId = t.id; e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => card.classList.add('dragging'), 0);
+  });
+  card.addEventListener('dragend', () => {
+    dragId = null;
+    document.querySelectorAll('.dz-over').forEach(el => el.classList.remove('dz-over'));
+    render();
+  });
+  return card;
+}
+
+function buildAddForm(ini, col) {
+  const form = document.createElement('div');
+  form.className = 'add-form';
+  const ti = document.createElement('input');
+  ti.className = 'add-inp'; ti.placeholder = 'Task title…';
+  const di = document.createElement('input');
+  di.className = 'add-inp'; di.type = 'date'; di.style.fontSize = '10px';
+  const acts = document.createElement('div');
+  acts.className = 'add-actions';
+  const sv = document.createElement('button');
+  sv.className = 'add-save'; sv.textContent = 'ADD';
+  const cn = document.createElement('button');
+  cn.className = 'add-cancel'; cn.textContent = 'CANCEL';
+  acts.appendChild(sv); acts.appendChild(cn);
+  form.appendChild(ti); form.appendChild(di); form.appendChild(acts);
+  const doSave = () => {
+    const v = ti.value.trim(); if (!v) return;
+    const d   = di.value || null;
+    const raw = d ? d.split('-').slice(1).reverse().join(' ').replace(/^0/,'') : '';
+    tasks.push({id:'t'+uidCounter++,title:v,tag:ini.tag,iid:ini.id,impact:3,deadline_raw:raw,due_date:d,col,pin:false});
+    addForm = null; schedSave(); render();
+  };
+  sv.onclick = doSave;
+  cn.onclick = () => { addForm=null; render(); };
+  ti.addEventListener('keydown', e => { if(e.key==='Enter') doSave(); if(e.key==='Escape'){addForm=null;render();} });
+  setTimeout(() => ti.focus(), 0);
+  return form;
+}
+
+function buildMarkdown() {
+  const ds  = new Date().toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
+  const act = tasks.filter(t=>!done.has(t.id)).length;
+  let md = `# Task List — Personal OS\n\n> Last synced: ${ds}\n> ${act} active | ${done.size} done | ${tasks.length} total\n\n---\n\n`;
+  INITS.forEach(ini => {
+    const it = tasks.filter(t=>t.iid===ini.id); if(!it.length) return;
+    md += `## ${ini.tag}\n\n`;
+    ['next','planned','ideas'].forEach(col => {
+      const ct = it.filter(t=>t.col===col); if(!ct.length) return;
+      md += `### ${col.charAt(0).toUpperCase()+col.slice(1)}\n\n`;
+      ct.forEach(t => { md += `- [${done.has(t.id)?'x':' '}] ${t.title} \`${t.deadline_raw||''}\` [impact:${t.impact}]${t.pin?' [PINNED]':''}\n`; });
+      md += '\n';
+    });
+  });
+  if (done.size>0) {
+    md += `---\n\n## Completed\n\n`;
+    tasks.filter(t=>done.has(t.id)).forEach(t=>{ md+=`- [x] ~~${t.title}~~ (${t.tag})\n`; });
+  }
+  return md;
+}
+
+document.getElementById('export-btn').addEventListener('click',()=>{
+  document.getElementById('export-pre').textContent = buildMarkdown();
+  document.getElementById('export-wrap').classList.remove('hidden');
+});
+document.getElementById('close-export').addEventListener('click',()=>{ document.getElementById('export-wrap').classList.add('hidden'); });
+document.getElementById('copy-btn').addEventListener('click',()=>{
+  navigator.clipboard.writeText(document.getElementById('export-pre').textContent).then(()=>{
+    const btn=document.getElementById('copy-btn'); btn.textContent='COPIED ✓';
+    setTimeout(()=>btn.textContent='COPY',1500);
+  });
+});
+document.getElementById('export-wrap').addEventListener('click',function(e){ if(e.target===this) this.classList.add('hidden'); });
+
+(async function(){
+  await loadBoard();
+  document.getElementById('loading').style.display='none';
+  document.getElementById('board').style.display='flex';
+  render();
+})();
+</script>
+</body>
+</html>
